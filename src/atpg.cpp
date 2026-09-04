@@ -46,7 +46,16 @@ bool ATPG::isFaultDetected(const std::string& faultNode, FaultType faultType) {
     auto target = netlist_.getNode(faultNode);
     if (!target) return false;
 
+    // Save PI values
+    std::map<std::string, LogicVal> savedPIs;
+    for (const auto& pi : netlist_.getPrimaryInputs()) {
+        savedPIs[pi->name] = pi->value;
+    }
+
     // 1. Simulate Good Circuit
+    for (const auto& pi : netlist_.getPrimaryInputs()) {
+        pi->value = savedPIs[pi->name];
+    }
     target->fault = FaultType::None;
     sim_.simulate();
     
@@ -56,6 +65,9 @@ bool ATPG::isFaultDetected(const std::string& faultNode, FaultType faultType) {
     }
 
     // 2. Simulate Faulty Circuit
+    for (const auto& pi : netlist_.getPrimaryInputs()) {
+        pi->value = savedPIs[pi->name];
+    }
     target->fault = faultType;
     sim_.simulate();
 
@@ -71,7 +83,10 @@ bool ATPG::isFaultDetected(const std::string& faultNode, FaultType faultType) {
         }
     }
 
-    // Reset fault
+    // Reset fault and PIs
     target->fault = FaultType::None;
+    for (const auto& pi : netlist_.getPrimaryInputs()) {
+        pi->value = savedPIs[pi->name];
+    }
     return detected;
 }
