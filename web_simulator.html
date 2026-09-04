@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OpenATPG Visual Simulator</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f4f7f6; color: #333; margin: 0; padding: 20px; }
+        .container { max-width: 900px; margin: 0 auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); }
+        h1 { color: #2c3e50; text-align: center; }
+        .circuit-container { display: flex; justify-content: center; align-items: center; margin: 40px 0; position: relative; height: 300px; }
+        .node { padding: 10px 15px; border-radius: 50%; background: #3498db; color: white; font-weight: bold; position: absolute; cursor: pointer; transition: 0.3s; box-shadow: 0 2px 4px rgba(0,0,0,0.2); }
+        .node:hover { transform: scale(1.1); }
+        .node.gate { border-radius: 5px; background: #95a5a6; }
+        .node.input { background: #2ecc71; }
+        .node.output { background: #e74c3c; }
+        .node.fault-sa0 { background: #e67e22 !important; outline: 3px solid #d35400; }
+        .node.fault-sa1 { background: #9b59b6 !important; outline: 3px solid #8e44ad; }
+        
+        /* Specific positioning for simple_and_or */
+        #node-A { top: 20px; left: 50px; }
+        #node-B { top: 120px; left: 50px; }
+        #node-C { top: 220px; left: 50px; }
+        #gate-W1 { top: 70px; left: 300px; width: 60px; text-align: center;}
+        #gate-Y { top: 170px; left: 550px; width: 60px; text-align: center;}
+        #node-Y-out { top: 170px; left: 800px; }
+
+        .line { position: absolute; background: #bdc3c7; height: 4px; z-index: -1; transform-origin: 0 50%; }
+        
+        .controls { display: flex; flex-direction: column; gap: 15px; background: #ecf0f1; padding: 20px; border-radius: 8px; }
+        .control-group { display: flex; gap: 10px; align-items: center; }
+        select, button { padding: 8px 12px; border: 1px solid #bdc3c7; border-radius: 4px; font-size: 16px; }
+        button { background: #2980b9; color: white; border: none; cursor: pointer; font-weight: bold; }
+        button:hover { background: #3498db; }
+        
+        .status-panel { margin-top: 20px; padding: 15px; background: #e8f8f5; border-left: 5px solid #1abc9c; border-radius: 4px; font-family: monospace; font-size: 16px; }
+        .val-badge { display: inline-block; background: #34495e; color: white; padding: 2px 6px; border-radius: 3px; font-size: 12px; margin-left: 5px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>OpenATPG Interactive Simulator</h1>
+    <p style="text-align: center;">Understand how Automatic Test Pattern Generation (ATPG) works by simulating Stuck-At faults on a basic digital circuit (W1 = A AND B, Y = W1 OR C).</p>
+
+    <div class="controls">
+        <div class="control-group">
+            <label for="faultNode">Select Node for Fault:</label>
+            <select id="faultNode">
+                <option value="none">-- No Fault --</option>
+                <option value="A">Input A</option>
+                <option value="B">Input B</option>
+                <option value="C">Input C</option>
+                <option value="W1">Wire W1 (AND output)</option>
+                <option value="Y">Output Y (OR output)</option>
+            </select>
+
+            <label for="faultType">Fault Type:</label>
+            <select id="faultType">
+                <option value="SA0">Stuck-At-0 (SA0)</option>
+                <option value="SA1">Stuck-At-1 (SA1)</option>
+            </select>
+
+            <button onclick="applyFault()">Apply Fault & Generate Pattern</button>
+        </div>
+    </div>
+
+    <div class="circuit-container" id="circuit">
+        <!-- SVG lines -->
+        <svg style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 0;">
+            <line x1="90" y1="40" x2="300" y2="80" stroke="#bdc3c7" stroke-width="4"/> <!-- A to W1 -->
+            <line x1="90" y1="140" x2="300" y2="100" stroke="#bdc3c7" stroke-width="4"/> <!-- B to W1 -->
+            <line x1="375" y1="90" x2="550" y2="180" stroke="#bdc3c7" stroke-width="4"/> <!-- W1 to Y -->
+            <line x1="90" y1="240" x2="550" y2="200" stroke="#bdc3c7" stroke-width="4"/> <!-- C to Y -->
+            <line x1="625" y1="190" x2="800" y2="190" stroke="#bdc3c7" stroke-width="4"/> <!-- Y to Out -->
+        </svg>
+
+        <div class="node input" id="node-A">A <span class="val-badge" id="val-A">X</span></div>
+        <div class="node input" id="node-B">B <span class="val-badge" id="val-B">X</span></div>
+        <div class="node input" id="node-C">C <span class="val-badge" id="val-C">X</span></div>
+        
+        <div class="node gate" id="gate-W1">AND<br>W1 <span class="val-badge" id="val-W1">X</span></div>
+        <div class="node gate" id="gate-Y">OR<br>Y <span class="val-badge" id="val-Y">X</span></div>
+        
+        <div class="node output" id="node-Y-out">PO: Y <span class="val-badge" id="val-Y-out">X</span></div>
+    </div>
+
+    <div class="status-panel" id="status">
+        Select a fault and click "Apply Fault & Generate Pattern" to see the ATPG engine find the test vector!
+    </div>
+</div>
+
+<script>
+    // Hardcoded logic representation of the C++ ATPG engine for this specific circuit
+    const patterns = {
+        "A": { "SA0": {A:1, B:1, C:0}, "SA1": {A:0, B:1, C:0} },
+        "B": { "SA0": {A:1, B:1, C:0}, "SA1": {A:1, B:0, C:0} },
+        "C": { "SA0": {A:0, B:0, C:1}, "SA1": {A:0, B:0, C:0} },
+        "W1": { "SA0": {A:1, B:1, C:0}, "SA1": {A:0, B:0, C:0} },
+        "Y": { "SA0": {A:0, B:0, C:1}, "SA1": {A:0, B:0, C:0} }
+    };
+
+    function resetNodes() {
+        document.querySelectorAll('.node').forEach(n => {
+            n.classList.remove('fault-sa0', 'fault-sa1');
+        });
+        document.querySelectorAll('.val-badge').forEach(b => b.innerText = 'X');
+    }
+
+    function applyFault() {
+        resetNodes();
+        const fNode = document.getElementById('faultNode').value;
+        const fType = document.getElementById('faultType').value;
+        const status = document.getElementById('status');
+
+        if (fNode === 'none') {
+            status.innerHTML = "No fault injected. Circuit is in a good state.";
+            return;
+        }
+
+        // Highlight fault node
+        const targetElement = document.getElementById(fNode === 'W1' || fNode === 'Y' ? 'gate-' + fNode : 'node-' + fNode);
+        targetElement.classList.add(fType === 'SA0' ? 'fault-sa0' : 'fault-sa1');
+
+        // Get test vector
+        const vector = patterns[fNode][fType];
+        
+        // Simulate Logic with Fault
+        let A = vector.A, B = vector.B, C = vector.C;
+        
+        // Good circuit logic
+        let good_W1 = A & B;
+        let good_Y = good_W1 | C;
+
+        // Faulty circuit logic
+        let f_A = fNode === 'A' ? (fType === 'SA0' ? 0 : 1) : A;
+        let f_B = fNode === 'B' ? (fType === 'SA0' ? 0 : 1) : B;
+        let f_C = fNode === 'C' ? (fType === 'SA0' ? 0 : 1) : C;
+        
+        let f_W1 = f_A & f_B;
+        if (fNode === 'W1') f_W1 = (fType === 'SA0' ? 0 : 1);
+        
+        let f_Y = f_W1 | f_C;
+        if (fNode === 'Y') f_Y = (fType === 'SA0' ? 0 : 1);
+
+        // Update UI Badges
+        document.getElementById('val-A').innerText = vector.A;
+        document.getElementById('val-B').innerText = vector.B;
+        document.getElementById('val-C').innerText = vector.C;
+        
+        // Show D notation (1/0 = D, 0/1 = D')
+        function getDNotation(good, faulty) {
+            if (good === 1 && faulty === 0) return "D (1)";
+            if (good === 0 && faulty === 1) return "D' (0)";
+            return good;
+        }
+
+        document.getElementById('val-W1').innerText = getDNotation(good_W1, f_W1);
+        document.getElementById('val-Y').innerText = getDNotation(good_Y, f_Y);
+        document.getElementById('val-Y-out').innerText = getDNotation(good_Y, f_Y);
+
+        status.innerHTML = `
+            <strong>Fault:</strong> Node ${fNode} is ${fType} <br>
+            <strong>Test Vector Generated:</strong> A=${vector.A}, B=${vector.B}, C=${vector.C} <br><br>
+            <strong>Propagation:</strong><br>
+            - Good Circuit Output (Y) = ${good_Y}<br>
+            - Faulty Circuit Output (Y) = ${f_Y}<br>
+            <em>Since the outputs differ, the tester successfully detects the physical defect!</em>
+        `;
+    }
+</script>
+
+</body>
+</html>
