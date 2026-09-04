@@ -1,0 +1,14 @@
+build/
+out/
+bin/
+*.o
+*.a
+*.so
+*.dylib
+*.exe
+.cmake/
+CMakeCache.txt
+CMakeFiles/
+*.dot
+*.png
+*.pdf
