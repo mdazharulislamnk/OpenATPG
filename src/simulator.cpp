@@ -90,21 +90,25 @@ LogicVal Simulator::evaluateGate(TokenType gateType, const std::vector<LogicVal>
 
 void Simulator::simulate() {
     for (auto node : topoOrder_) {
-        // Skip PIs, their value is set externally
-        if (node->type == NodeType::PI) continue;
+        // Evaluate logic for non-PIs
+        if (node->type != NodeType::PI) {
+            std::vector<LogicVal> inVals;
+            for (auto in : node->inputs) {
+                inVals.push_back(in->value);
+            }
 
-        std::vector<LogicVal> inVals;
-        for (auto in : node->inputs) {
-            inVals.push_back(in->value);
-        }
-
-        // Evaluate gate logic
-        if (node->type == NodeType::Gate || node->type == NodeType::PO) {
             if (node->gateType != TokenType::Unknown) {
                 node->value = evaluateGate(node->gateType, inVals);
             } else if (!inVals.empty()) {
                 node->value = inVals[0]; // Simple wire passing
             }
+        }
+
+        // Apply fault injection
+        if (node->fault == FaultType::SA0) {
+            node->value = LogicVal::Zero;
+        } else if (node->fault == FaultType::SA1) {
+            node->value = LogicVal::One;
         }
     }
 }
